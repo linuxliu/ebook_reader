@@ -1,9 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import DebugApp from './DebugApp';
+import App from './App';
 import { AppProvider } from './store';
-// import './styles/index.css'; // 暂时注释掉CSS
-
+import './styles/index.css'; 
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root element not found');
@@ -12,6 +11,6 @@ if (!container) {
 const root = createRoot(container);
 root.render(
   <AppProvider>
-    <DebugApp />
+    <App />
   </AppProvider>
 );
