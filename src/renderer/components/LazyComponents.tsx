@@ -1,42 +1,33 @@
-import React, { Suspense, lazy } from 'react';
+import React from 'react';
 
-// 懒加载组件
-export const LazyBookshelf = lazy(() => import('./Bookshelf/Bookshelf'));
-export const LazyReader = lazy(() => import('./Reader/Reader'));
-export const LazyVocabulary = lazy(() => import('./Vocabulary/Vocabulary'));
-export const LazySettings = lazy(() => import('./Settings/SettingsPanel'));
+// 直接导入组件，避免代码分割
+import Bookshelf from './Bookshelf/Bookshelf';
+import Reader from './Reader/Reader';
+import Vocabulary from './Vocabulary/Vocabulary';
+import SettingsPanel from './Settings/SettingsPanel';
 
-// 高阶组件包装器
+// 导出组件（保持原有的命名以兼容现有代码）
+export const LazyBookshelf = Bookshelf;
+export const LazyReader = Reader;
+export const LazyVocabulary = Vocabulary;
+export const LazySettings = SettingsPanel;
+
+// 高阶组件包装器（简化版，不再需要 Suspense）
 export function withSuspense<P extends object>(
   Component: React.ComponentType<P>,
-  fallback: React.ReactNode = <div>Loading...</div>
+  fallback?: React.ReactNode
 ) {
-  return function SuspenseWrapper(props: P) {
-    return (
-      <Suspense fallback={fallback}>
-        <Component {...props} />
-      </Suspense>
-    );
-  };
+  return Component; // 直接返回组件，不需要 Suspense 包装
 }
 
 // 导出包装后的组件
-export const BookshelfWithSuspense = withSuspense(LazyBookshelf);
-export const ReaderWithSuspense = withSuspense(LazyReader);
-export const VocabularyWithSuspense = withSuspense(LazyVocabulary);
-export const SettingsWithSuspense = withSuspense(LazySettings);
+export const BookshelfWithSuspense = Bookshelf;
+export const ReaderWithSuspense = Reader;
+export const VocabularyWithSuspense = Vocabulary;
+export const SettingsWithSuspense = SettingsPanel;
 
-// 预加载所有组件的函数
-export const preloadAllComponents = async (): Promise<void> => {
-  try {
-    await Promise.all([
-      import('./Bookshelf/Bookshelf'),
-      import('./Reader/Reader'),
-      import('./Vocabulary/Vocabulary'),
-      import('./Settings/SettingsPanel')
-    ]);
-    console.log('All components preloaded successfully');
-  } catch (error) {
-    console.error('Failed to preload components:', error);
-  }
+// 预加载函数（现在是同步的，因为组件已经直接导入）
+export const preloadAllComponents = (): Promise<void> => {
+  console.log('All components loaded synchronously');
+  return Promise.resolve();
 };

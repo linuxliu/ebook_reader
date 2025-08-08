@@ -71,15 +71,22 @@ export const useStartupOptimization = () => {
     }
   }, [isOptimizing]);
 
-  // Auto-optimize on mount
+  // Auto-optimize on mount (only once)
   useEffect(() => {
+    let isMounted = true;
+    
     // Delay optimization to not block initial render
     const timeoutId = setTimeout(() => {
-      optimizeStartup();
+      if (isMounted && !metrics.isOptimized) {
+        optimizeStartup();
+      }
     }, 100);
 
-    return () => clearTimeout(timeoutId);
-  }, [optimizeStartup]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, []); // Empty dependency array to run only once
 
   // Performance monitoring
   useEffect(() => {

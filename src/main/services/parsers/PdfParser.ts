@@ -1,5 +1,13 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+// 通用超时包装函数
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]);
+}
 import { 
   BookMetadata, 
   BookContent, 
@@ -41,8 +49,10 @@ export class PdfParser {
   async parseMetadata(filePath: string, bookId: string): Promise<Partial<BookMetadata>> {
     try {
       const pdfLib = await getPdfLib();
-      const data = await fs.readFile(filePath);
-      const pdf = await pdfLib.getDocument({ data }).promise;
+      const data = await withTimeout(fs.readFile(filePath), 10000, 'File read timeout');
+      
+      // 添加超时机制
+      const pdf = await withTimeout(pdfLib.getDocument({ data }).promise, 20000, 'PDF parsing timeout');
 
       // 获取 PDF 元信息
       const metadata = await pdf.getMetadata();

@@ -3,6 +3,19 @@ import { IPCRequest, IPCResponse } from '../shared/types';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('global', globalThis);
+
+contextBridge.exposeInMainWorld('electron', {
+  require: (module) => {
+    if (module === 'events') {
+      return require('events');
+    }
+    // Add other modules if needed
+    throw new Error(`Module ${module} is not supported`);
+  }
+});
+
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // 通用 IPC 调用方法
   invoke: (channel: string, request: IPCRequest): Promise<IPCResponse> => {
@@ -31,12 +44,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 获取应用版本
   getVersion: (): Promise<string> => {
-    return ipcRenderer.invoke('app:get-version');
+    const request: IPCRequest = {
+      id: `app-version-${Date.now()}`,
+      channel: 'app:get-version',
+      timestamp: Date.now()
+    };
+    return ipcRenderer.invoke('app:get-version', request).then((response: IPCResponse<string>) => {
+      if (response.success) {
+        return response.data!;
+      } else {
+        throw new Error(response.error?.message || 'Failed to get app version');
+      }
+    });
   },
 
   // 获取平台信息
   getPlatform: (): Promise<string> => {
-    return ipcRenderer.invoke('app:get-platform');
+    const request: IPCRequest = {
+      id: `app-platform-${Date.now()}`,
+      channel: 'app:get-platform',
+      timestamp: Date.now()
+    };
+    return ipcRenderer.invoke('app:get-platform', request).then((response: IPCResponse<string>) => {
+      if (response.success) {
+        return response.data!;
+      } else {
+        throw new Error(response.error?.message || 'Failed to get platform info');
+      }
+    });
   }
 });
 

@@ -84,6 +84,16 @@ export class FileSystemService implements IFileSystemService {
       if (fileInfo.format === 'epub') {
         try {
           const epubMetadata = await this.epubParser.parseMetadata(safePath, bookId);
+          
+          // 确保作者字段是字符串类型
+          if (epubMetadata.author && typeof epubMetadata.author !== 'string') {
+            if (epubMetadata.author._ && typeof epubMetadata.author._ === 'string') {
+              epubMetadata.author = epubMetadata.author._;
+            } else {
+              epubMetadata.author = '未知作者';
+            }
+          }
+          
           metadata = { ...metadata, ...epubMetadata };
         } catch (error) {
           // EPUB 解析失败时使用基本元信息，但记录警告
@@ -379,17 +389,21 @@ export class FileSystemService implements IFileSystemService {
   ): Promise<BookMetadata> {
     const fileName = path.basename(filePath, path.extname(filePath));
     
-    return {
+    const metadata: BookMetadata = {
       id: bookId,
       title: fileName, // 后续会被具体解析器覆盖
       author: '未知作者', // 后续会被具体解析器覆盖
+      cover: undefined, // 明确设置为 undefined
       format: fileInfo.format as BookFormat,
       filePath,
       fileSize: fileInfo.size,
       importDate: new Date(),
+      lastReadDate: undefined, // 明确设置为 undefined
       totalPages: 0, // 后续会被具体解析器设置
       language: 'zh-CN' // 默认语言，后续可能会被检测覆盖
     };
+    
+    return metadata;
   }
 
   /**

@@ -50,8 +50,8 @@ export class IPCClient {
   /**
    * 导入书籍
    */
-  async importBook(filePath?: string): Promise<BookMetadata> {
-    const response = await this.sendRequest<BookImportRequest, BookMetadata>('book:import', {
+  async importBook(filePath?: string): Promise<BookImportResponse> {
+    const response = await this.sendRequest<BookImportRequest, BookImportResponse>('book:import', {
       filePath: filePath || ''
     });
     return response;

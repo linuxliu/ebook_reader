@@ -34,7 +34,7 @@ export class IPCHandlers {
   private cacheService: CacheService;
   private translationService: TranslationServiceImpl;
   private requestTimeouts = new Map<string, NodeJS.Timeout>();
-  private readonly defaultTimeout = 30000; // 30秒超时
+  private readonly defaultTimeout = 60000; // 60秒超时，给书籍导入更多时间
 
   constructor() {
     this.databaseService = new DatabaseService();
@@ -123,7 +123,16 @@ export class IPCHandlers {
         const book = await this.fileSystemService.importBook(targetPath);
         const bookId = await this.databaseService.saveBook(book);
         
-        return { book: { ...book, id: bookId } } as BookImportResponse;
+        // 确保返回给渲染进程的数据类型正确
+        const cleanBook = {
+          ...book,
+          id: bookId,
+          author: typeof book.author === 'string' ? book.author : 
+                 (book.author && typeof book.author === 'object' && book.author._ ? 
+                  book.author._ : '未知作者')
+        };
+        
+        return { book: cleanBook } as BookImportResponse;
       });
     });
 

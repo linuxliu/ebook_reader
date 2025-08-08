@@ -143,42 +143,21 @@ export class ResourceOptimizer {
   }
 
   /**
-   * Bundle splitting and code splitting utilities
+   * Bundle splitting and code splitting utilities (simplified for Electron)
    */
   static async loadChunk(chunkName: string): Promise<any> {
-    try {
-      // Dynamic import for code splitting
-      const chunk = await import(
-        /* webpackChunkName: "[request]" */
-        `../chunks/${chunkName}`
-      );
-      
-      console.log(`Loaded chunk: ${chunkName}`);
-      return chunk;
-    } catch (error) {
-      console.error(`Failed to load chunk ${chunkName}:`, error);
-      // Return a fallback for missing chunks
-      return { default: null };
-    }
+    console.warn(`loadChunk called with ${chunkName}, but code splitting is disabled in Electron build`);
+    // Return a fallback since we're not using code splitting
+    return { default: null };
   }
 
   /**
-   * Service worker registration for caching
+   * Service worker registration for caching (disabled in Electron)
    */
   static async registerServiceWorker(): Promise<void> {
-    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      try {
-        const registration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker registered:', registration);
-        
-        // Listen for updates
-        registration.addEventListener('updatefound', () => {
-          console.log('Service Worker update found');
-        });
-      } catch (error) {
-        console.error('Service Worker registration failed:', error);
-      }
-    }
+    // Service Workers are not needed in Electron apps
+    // Electron has its own caching mechanisms
+    console.log('Service Worker registration skipped (Electron environment)');
   }
 
   /**

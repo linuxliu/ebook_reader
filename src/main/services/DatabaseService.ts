@@ -55,10 +55,15 @@ export class DatabaseService implements IDatabaseService {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
-      stmt.run(
+      // 确保所有参数都是正确的类型
+      const author = typeof book.author === 'string' ? book.author : 
+                    (book.author && typeof book.author === 'object' && book.author._ ? 
+                     book.author._ : '未知作者');
+      
+      const params = [
         book.id,
         book.title,
-        book.author,
+        author,
         book.cover || null,
         book.format,
         book.filePath,
@@ -67,8 +72,9 @@ export class DatabaseService implements IDatabaseService {
         book.lastReadDate?.toISOString() || null,
         book.totalPages,
         book.language
-      );
+      ];
       
+      stmt.run(...params);
       return book.id;
     } catch (error) {
       throw this.createError(ErrorType.DATABASE_ERROR, 'Failed to save book', error);

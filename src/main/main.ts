@@ -6,6 +6,18 @@ import { DatabaseService } from './services/DatabaseService';
 import { CacheService } from './services/CacheService';
 import { autoUpdaterService } from './services/AutoUpdaterService';
 
+// Only load electron-reload in development
+if (process.env.NODE_ENV === 'development') {
+  try {
+    require('electron-reload')(path.join(__dirname, '../..'), {
+      electron: path.join(__dirname, '../../node_modules/.bin/electron'),
+      hardResetMethod: 'exit'
+    });
+  } catch (error) {
+    console.warn('electron-reload not available:', error.message);
+  }
+}
+
 class ElectronApp {
   private mainWindow: BrowserWindow | null = null;
   private ipcHandlers: IPCHandlers | null = null;
@@ -51,6 +63,10 @@ class ElectronApp {
       if (this.startupOptimizer) {
         await this.startupOptimizer.cleanup();
       }
+      
+      // 清理 Worker 资源
+      const { WorkerManager } = await import('./services/WorkerManager');
+      WorkerManager.getInstance().cleanup();
     });
   }
 
@@ -65,6 +81,9 @@ class ElectronApp {
         contextIsolation: true,
         enableRemoteModule: false,
         preload: path.join(__dirname, 'preload.js'),
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        experimentalFeatures: false,
       },
       titleBarStyle: 'default',
       show: false,

@@ -6,6 +6,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist/main'),
     filename: 'preload.js',
+    clean: false, // Don't clean since main process also outputs here
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -28,4 +29,5 @@ module.exports = {
     __dirname: false,
     __filename: false,
   },
+  devtool: process.env.NODE_ENV === 'development' ? 'source-map' : false,
 };

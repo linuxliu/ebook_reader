@@ -38,20 +38,31 @@ const ImportButton: React.FC<ImportButtonProps> = ({
       setImportProgress(prev => prev ? { ...prev, stage: 'selecting', progress: 10 } : null);
       
       // 调用主进程的导入功能（会打开文件选择对话框）
-      const book = await ipcClient.importBook();
+      const response = await ipcClient.importBook();
       
-      if (!book) {
+      if (!response || !response.book) {
         // 用户取消了文件选择
         setIsImporting(false);
         setImportProgress(null);
         return;
       }
 
+      const book = response.book;
+
       // 验证导入的书籍数据
+      console.log('Validating imported book data:', book);
+      console.log('Title:', book.title, 'Author:', book.author, 'Format:', book.format);
+      
       if (!book.title || !book.author || !book.format) {
+        const missingFields = [];
+        if (!book.title) missingFields.push('title');
+        if (!book.author) missingFields.push('author');
+        if (!book.format) missingFields.push('format');
+        
+        console.error('Missing fields:', missingFields);
         throw {
           type: ErrorType.PARSE_ERROR,
-          message: '书籍信息不完整，请检查文件格式',
+          message: `书籍信息不完整，缺少字段: ${missingFields.join(', ')}`,
           timestamp: new Date(),
           recoverable: true
         } as AppError;

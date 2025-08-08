@@ -27,7 +27,7 @@ const App: React.FC = () => {
 
   // Use state management hooks
   const { currentView, setCurrentView } = useCurrentView();
-  const { books } = useBooks();
+  const { books, setBooks } = useBooks();
   const { loading } = useLoading();
   const { error, hasError, clearError } = useError();
 
@@ -45,13 +45,22 @@ const App: React.FC = () => {
         const appVersion = await window.electronAPI.getVersion();
         const appPlatform = await window.electronAPI.getPlatform();
         console.log('App initialized:', { version: appVersion, platform: appPlatform });
+        
+        // Load books from database
+        const { IPCClient } = await import('./services/IPCClient');
+        const ipcClient = new IPCClient();
+        const allBooks = await ipcClient.getAllBooks();
+        console.log('Loaded books:', allBooks);
+        
+        // Update books state
+        setBooks(allBooks);
       } catch (error) {
         console.error('Failed to initialize app:', error);
       }
     };
 
     initializeApp();
-  }, []);
+  }, [setBooks]);
 
   const handleViewChange = (view: typeof currentView) => {
     setCurrentView(view);
