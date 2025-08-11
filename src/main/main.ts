@@ -125,16 +125,19 @@ class ElectronApp {
 
   private async setupIpcHandlers(): Promise<void> {
     try {
-      // Initialize startup optimizer first
+      // Initialize services first
       const databaseService = new DatabaseService();
       const cacheService = new CacheService();
+      
+      // Initialize startup optimizer
       this.startupOptimizer = new StartupOptimizer(databaseService, cacheService);
       
       // Optimize startup performance
       const metrics = await this.startupOptimizer.optimizeStartup();
       console.log('Startup optimization completed:', metrics);
       
-      this.ipcHandlers = new IPCHandlers();
+      // Initialize IPC handlers with the same database service instance
+      this.ipcHandlers = new IPCHandlers(databaseService, cacheService);
       await this.ipcHandlers.initialize();
       console.log('IPC handlers initialized successfully');
     } catch (error) {

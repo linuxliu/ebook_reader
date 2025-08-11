@@ -36,10 +36,10 @@ export class IPCHandlers {
   private requestTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly defaultTimeout = 60000; // 60秒超时，给书籍导入更多时间
 
-  constructor() {
-    this.databaseService = new DatabaseService();
+  constructor(databaseService?: DatabaseService, cacheService?: CacheService) {
+    this.databaseService = databaseService || new DatabaseService();
     this.fileSystemService = new FileSystemService();
-    this.cacheService = new CacheService();
+    this.cacheService = cacheService || new CacheService();
     this.translationService = new TranslationServiceImpl();
   }
 
@@ -48,9 +48,6 @@ export class IPCHandlers {
    */
   async initialize(): Promise<void> {
     try {
-      // 初始化数据库服务
-      await this.databaseService.initialize();
-      
       // 注册所有 IPC 处理器
       this.registerBookHandlers();
       this.registerProgressHandlers();

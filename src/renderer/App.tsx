@@ -129,13 +129,27 @@ const App: React.FC = () => {
 
   const handleBookAdd = (book: BookMetadata) => {
     console.log('Book added:', book);
-    // TODO: 添加到状态管理中
-    // 这里应该调用状态管理的 addBook action
+    // 添加到本地状态中
+    const updatedBooks = [...books, book];
+    setBooks(updatedBooks);
   };
 
-  const handleDeleteBook = (bookId: string) => {
+  const handleDeleteBook = async (bookId: string) => {
     console.log('Delete book:', bookId);
-    // TODO: 实现书籍删除逻辑
+    try {
+      // 调用IPC删除书籍
+      const { IPCClient } = await import('./services/IPCClient');
+      const ipcClient = new IPCClient();
+      await ipcClient.deleteBook(bookId);
+      
+      // 从本地状态中移除书籍
+      const updatedBooks = books.filter(book => book.id !== bookId);
+      setBooks(updatedBooks);
+      
+      console.log('Book deleted successfully:', bookId);
+    } catch (error) {
+      console.error('Failed to delete book:', error);
+    }
   };
 
   const handleCloseReader = () => {

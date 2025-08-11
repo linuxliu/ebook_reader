@@ -40,12 +40,12 @@ export const useReadingProgressManager = ({
 }: UseReadingProgressManagerOptions): ReadingProgressManager => {
   const { readingProgress, setReadingProgress, updateReadingProgress } = useReadingProgress();
   const { createError } = useError();
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
+
   // 防抖定时器
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   // 自动保存定时器
@@ -104,6 +104,53 @@ export const useReadingProgressManager = ({
   }, [book.totalPages]);
 
   /**
+   * 执行实际的保存操作
+   */
+  const performSave = useCallback(async (progress: ReadingProgress): Promise<void> => {
+    if (!book?.id) return;
+
+    try {
+      setIsSaving(true);
+      await ipcClient.saveProgress(book.id, progress);
+      setLastSaveTime(new Date());
+      setHasUnsavedChanges(false);
+      pendingProgressRef.current = null;
+    } catch (error) {
+      createError(
+        ErrorType.DATABASE_ERROR,
+        '保存阅读进度失败',
+        error
+      );
+      // 保持未保存状态，以便稍后重试
+      setHasUnsavedChanges(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [book?.id, createError]);
+
+  /**
+   * 备份当前进度
+   */
+  const backupProgress = useCallback(async (): Promise<void> => {
+    if (!enableBackup || !readingProgress) return;
+
+    try {
+      // 添加到历史记录
+      const backup = { ...readingProgress };
+      progressHistoryRef.current = [
+        backup,
+        ...progressHistoryRef.current.slice(0, 9) // 保留最近10个备份
+      ];
+
+      // 可选：保存到本地存储作为额外备份
+      const backupKey = `progress_backup_${book.id}`;
+      localStorage.setItem(backupKey, JSON.stringify(progressHistoryRef.current));
+    } catch (error) {
+      console.warn('Failed to backup progress:', error);
+    }
+  }, [enableBackup, readingProgress, book.id]);
+
+  /**
    * 加载阅读进度
    */
   const loadProgress = useCallback(async (): Promise<ReadingProgress | null> => {
@@ -111,31 +158,31 @@ export const useReadingProgressManager = ({
 
     try {
       setIsLoading(true);
-      
+
       // 恢复进度历史记录
       if (enableBackup) {
         progressHistoryRef.current = restoreProgressHistory(book.id);
       }
-      
+
       const progress = await ipcClient.getProgress(book.id);
-      
+
       if (progress) {
         // 验证进度数据的完整性
         if (isValidProgress(progress)) {
           const validatedProgress = validateProgressData(progress, book);
           setReadingProgress(validatedProgress);
           setHasUnsavedChanges(false);
-          
+
           // 备份加载的进度
           if (enableBackup) {
             await backupProgress();
           }
-          
+
           return validatedProgress;
         } else {
           // 进度数据损坏，尝试从历史记录恢复
           console.warn('Corrupted progress data detected, attempting recovery...');
-          
+
           if (enableBackup && progressHistoryRef.current.length > 0) {
             const lastValidProgress = progressHistoryRef.current.find(p => isValidProgress(p));
             if (lastValidProgress) {
@@ -147,7 +194,7 @@ export const useReadingProgressManager = ({
               return restoredProgress;
             }
           }
-          
+
           // 无法恢复，创建新的初始进度
           throw new Error('Progress data is corrupted and cannot be recovered');
         }
@@ -163,7 +210,7 @@ export const useReadingProgressManager = ({
         '加载阅读进度失败',
         error
       );
-      
+
       // 尝试从本地备份恢复
       if (enableBackup && progressHistoryRef.current.length > 0) {
         const lastValidProgress = progressHistoryRef.current.find(p => isValidProgress(p));
@@ -174,7 +221,7 @@ export const useReadingProgressManager = ({
           return fallbackProgress;
         }
       }
-      
+
       // 创建默认进度作为最后的降级方案
       const fallbackProgress = createInitialProgress(book);
       setReadingProgress(fallbackProgress);
@@ -183,6 +230,58 @@ export const useReadingProgressManager = ({
       setIsLoading(false);
     }
   }, [book, setReadingProgress, createError, enableBackup, isValidProgress, backupProgress, performSave]);
+
+  /**
+   * 自动检测当前阅读位置
+   */
+  const detectCurrentPosition = useCallback((): string => {
+    if (!enableAutoDetection) {
+      return readingProgress?.position || 'page-1';
+    }
+
+    try {
+      // 获取当前滚动位置和视口信息
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const viewportHeight = window.innerHeight;
+      const contentHeight = document.documentElement.scrollHeight;
+
+      // 更新位置检测数据
+      positionDetectionRef.current = {
+        lastScrollPosition: scrollTop,
+        lastViewportHeight: viewportHeight,
+        lastContentHeight: contentHeight
+      };
+
+      // 计算相对位置（百分比）
+      const scrollPercentage = contentHeight > viewportHeight
+        ? (scrollTop / (contentHeight - viewportHeight)) * 100
+        : 0;
+
+      // 尝试获取当前可见的元素ID或章节标识
+      const visibleElements = document.elementsFromPoint(
+        window.innerWidth / 2,
+        window.innerHeight / 2
+      );
+
+      let elementId = '';
+      for (const element of visibleElements) {
+        if (element.id && (element.id.startsWith('chapter-') || element.id.startsWith('page-'))) {
+          elementId = element.id;
+          break;
+        }
+      }
+
+      // 生成精确的位置标识
+      const position = elementId
+        ? `${elementId}:${Math.round(scrollPercentage)}%`
+        : `scroll:${Math.round(scrollPercentage)}%:${scrollTop}`;
+
+      return position;
+    } catch (error) {
+      console.warn('Failed to detect current position:', error);
+      return readingProgress?.position || 'page-1';
+    }
+  }, [enableAutoDetection, readingProgress?.position]);
 
   /**
    * 保存阅读进度
@@ -231,32 +330,7 @@ export const useReadingProgressManager = ({
       const progressToSave = pendingProgressRef.current as ReadingProgress;
       await performSave(progressToSave);
     }, debounceDelay);
-  }, [book?.id, readingProgress, updateReadingProgress, debounceDelay, enableAutoDetection, detectCurrentPosition, isValidProgress, validateProgressData, enableBackup, backupProgress]);
-
-  /**
-   * 执行实际的保存操作
-   */
-  const performSave = useCallback(async (progress: ReadingProgress): Promise<void> => {
-    if (!book?.id) return;
-
-    try {
-      setIsSaving(true);
-      await ipcClient.saveProgress(book.id, progress);
-      setLastSaveTime(new Date());
-      setHasUnsavedChanges(false);
-      pendingProgressRef.current = null;
-    } catch (error) {
-      createError(
-        ErrorType.DATABASE_ERROR,
-        '保存阅读进度失败',
-        error
-      );
-      // 保持未保存状态，以便稍后重试
-      setHasUnsavedChanges(true);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [book?.id, createError]);
+  }, [book?.id, readingProgress, updateReadingProgress, debounceDelay, enableAutoDetection, detectCurrentPosition, isValidProgress, enableBackup, backupProgress, performSave]);
 
   /**
    * 重置阅读进度
@@ -266,16 +340,16 @@ export const useReadingProgressManager = ({
 
     try {
       setIsLoading(true);
-      
+
       // 删除数据库中的进度
       await ipcClient.deleteProgress(book.id);
-      
+
       // 创建新的初始进度
       const initialProgress = createInitialProgress(book);
       setReadingProgress(initialProgress);
       setHasUnsavedChanges(false);
       setLastSaveTime(null);
-      
+
     } catch (error) {
       createError(
         ErrorType.DATABASE_ERROR,
@@ -286,89 +360,6 @@ export const useReadingProgressManager = ({
       setIsLoading(false);
     }
   }, [book, setReadingProgress, createError]);
-
-  /**
-   * 强制保存当前进度
-   */
-  const forceSave = useCallback(async (): Promise<void> => {
-    if (pendingProgressRef.current) {
-      await performSave(pendingProgressRef.current as ReadingProgress);
-    }
-  }, [performSave]);
-
-  /**
-   * 自动检测当前阅读位置
-   */
-  const detectCurrentPosition = useCallback((): string => {
-    if (!enableAutoDetection) {
-      return readingProgress?.position || 'page-1';
-    }
-
-    try {
-      // 获取当前滚动位置和视口信息
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const viewportHeight = window.innerHeight;
-      const contentHeight = document.documentElement.scrollHeight;
-      
-      // 更新位置检测数据
-      positionDetectionRef.current = {
-        lastScrollPosition: scrollTop,
-        lastViewportHeight: viewportHeight,
-        lastContentHeight: contentHeight
-      };
-
-      // 计算相对位置（百分比）
-      const scrollPercentage = contentHeight > viewportHeight 
-        ? (scrollTop / (contentHeight - viewportHeight)) * 100 
-        : 0;
-
-      // 尝试获取当前可见的元素ID或章节标识
-      const visibleElements = document.elementsFromPoint(
-        window.innerWidth / 2, 
-        window.innerHeight / 2
-      );
-      
-      let elementId = '';
-      for (const element of visibleElements) {
-        if (element.id && (element.id.startsWith('chapter-') || element.id.startsWith('page-'))) {
-          elementId = element.id;
-          break;
-        }
-      }
-
-      // 生成精确的位置标识
-      const position = elementId 
-        ? `${elementId}:${Math.round(scrollPercentage)}%`
-        : `scroll:${Math.round(scrollPercentage)}%:${scrollTop}`;
-
-      return position;
-    } catch (error) {
-      console.warn('Failed to detect current position:', error);
-      return readingProgress?.position || 'page-1';
-    }
-  }, [enableAutoDetection, readingProgress?.position]);
-
-  /**
-   * 备份当前进度
-   */
-  const backupProgress = useCallback(async (): Promise<void> => {
-    if (!enableBackup || !readingProgress) return;
-
-    try {
-      // 添加到历史记录
-      const backup = { ...readingProgress };
-      progressHistoryRef.current = [
-        backup,
-        ...progressHistoryRef.current.slice(0, 9) // 保留最近10个备份
-      ];
-
-      // 可选：保存到本地存储作为额外备份
-      const backupKey = `progress_backup_${book.id}`;
-      localStorage.setItem(backupKey, JSON.stringify(progressHistoryRef.current));
-    } catch (error) {
-      console.warn('Failed to backup progress:', error);
-    }
-  }, [enableBackup, readingProgress, book.id]);
 
   /**
    * 恢复进度数据
@@ -385,7 +376,7 @@ export const useReadingProgressManager = ({
       // 恢复进度
       setReadingProgress(backupData);
       await performSave(backupData);
-      
+
       setHasUnsavedChanges(false);
     } catch (error) {
       createError(
@@ -449,86 +440,6 @@ export const useReadingProgressManager = ({
       }
     };
   }, [book?.id, hasUnsavedChanges]);
-
-  // 页面可见性变化时的处理
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && hasUnsavedChanges) {
-        // 页面隐藏时立即保存
-        forceSave();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [hasUnsavedChanges, forceSave]);
-
-  // 自动位置检测（滚动事件监听）
-  useEffect(() => {
-    if (!enableAutoDetection || !book?.id) return;
-
-    let scrollTimeout: NodeJS.Timeout;
-    
-    const handleScroll = () => {
-      // 防抖处理滚动事件
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        const currentPosition = detectCurrentPosition();
-        const currentScrollData = positionDetectionRef.current;
-        
-        // 只有位置发生显著变化时才更新
-        const scrollDiff = Math.abs(
-          currentScrollData.lastScrollPosition - 
-          (window.pageYOffset || document.documentElement.scrollTop)
-        );
-        
-        if (scrollDiff > 50) { // 滚动超过50px才更新
-          saveProgress({ position: currentPosition });
-        }
-      }, 500); // 500ms防抖
-    };
-
-    const handleResize = () => {
-      // 窗口大小变化时也更新位置
-      const currentPosition = detectCurrentPosition();
-      saveProgress({ position: currentPosition });
-    };
-
-    // 添加事件监听器
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      clearTimeout(scrollTimeout);
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [enableAutoDetection, book?.id, detectCurrentPosition, saveProgress]);
-
-  // 定期检查和清理过期的备份数据
-  useEffect(() => {
-    if (!enableBackup || !book?.id) return;
-
-    const cleanupInterval = setInterval(() => {
-      try {
-        // 清理超过7天的备份数据
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        
-        progressHistoryRef.current = progressHistoryRef.current.filter(
-          progress => new Date(progress.lastUpdateTime) > sevenDaysAgo
-        );
-
-        // 更新本地存储
-        const backupKey = `progress_backup_${book.id}`;
-        localStorage.setItem(backupKey, JSON.stringify(progressHistoryRef.current));
-      } catch (error) {
-        console.warn('Failed to cleanup progress history:', error);
-      }
-    }, 60000 * 60); // 每小时清理一次
-
-    return () => clearInterval(cleanupInterval);
-  }, [enableBackup, book?.id]);
 
   return {
     currentProgress: readingProgress,
@@ -611,7 +522,7 @@ function validateProgressData(progress: ReadingProgress, book: BookMetadata): Re
  */
 function createInitialProgress(book: BookMetadata): ReadingProgress {
   const now = new Date();
-  
+
   return {
     bookId: book.id,
     currentPage: 1,
