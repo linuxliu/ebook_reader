@@ -8,7 +8,10 @@ import NavigationBar from './NavigationBar';
 import ProgressIndicator from './ProgressIndicator';
 import ProgressSaveStatus from './ProgressSaveStatus';
 import ProgressRecovery from './ProgressRecovery';
+import ResizablePanels from './ResizablePanels';
+import SettingsPanel from '../Settings/SettingsPanel';
 import { useReadingProgressManager } from '../../hooks/useReadingProgressManager';
+import { useDynamicPagination } from '../../hooks/useDynamicPagination';
 
 interface ReaderProps {
   book: BookMetadata;
@@ -32,31 +35,70 @@ const Reader: React.FC<ReaderProps> = ({
   onClose
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(progress.currentPage);
-  const [currentChapter, setCurrentChapter] = useState(progress.currentChapter);
   const [showToc, setShowToc] = useState(false);
   const [showProgressRecovery, setShowProgressRecovery] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+  const [contentAreaSize, setContentAreaSize] = useState({ width: 800, height: 600 });
+
+  // 使用动态分页系统
+  const pagination = useDynamicPagination({
+    content,
+    settings,
+    containerWidth: contentAreaSize.width,
+    containerHeight: contentAreaSize.height
+  });
 
   // 使用阅读进度管理器
   const progressManager = useReadingProgressManager({
-    book,
+    book: { ...book, totalPages: pagination.totalPages }, // 使用动态计算的总页数
     autoSaveInterval: 5000, // 5秒自动保存
     debounceDelay: 1000, // 1秒防抖
     enableAutoDetection: true, // 启用自动位置检测
     enableBackup: true // 启用进度备份
   });
 
-  // Update local state when props change or progress manager loads new data
+  // Initialize pagination with current progress
   useEffect(() => {
     if (progressManager.currentProgress) {
-      setCurrentPage(progressManager.currentProgress.currentPage);
-      setCurrentChapter(progressManager.currentProgress.currentChapter);
+      pagination.goToPage(progressManager.currentProgress.currentPage);
     } else {
-      setCurrentPage(progress.currentPage);
-      setCurrentChapter(progress.currentChapter);
+      pagination.goToPage(progress.currentPage);
     }
-  }, [progress.currentPage, progress.currentChapter, progressManager.currentProgress]);
+  }, [progress.currentPage, progressManager.currentProgress, pagination]);
   const readerRef = useRef<HTMLDivElement>(null);
+
+  // 监听容器尺寸变化
+  useEffect(() => {
+    const updateContainerSize = () => {
+      if (readerRef.current) {
+        const rect = readerRef.current.getBoundingClientRect();
+        const newSize = {
+          width: rect.width || 800,
+          height: rect.height || 600
+        };
+        setContainerSize(newSize);
+        
+        // 如果目录未显示，内容区域使用全宽
+        if (!showToc) {
+          setContentAreaSize(newSize);
+        }
+      }
+    };
+
+    // 初始化尺寸
+    updateContainerSize();
+
+    // 监听窗口大小变化
+    const resizeObserver = new ResizeObserver(updateContainerSize);
+    if (readerRef.current) {
+      resizeObserver.observe(readerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [showToc]);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -79,7 +121,7 @@ const Reader: React.FC<ReaderProps> = ({
           break;
         case 'End':
           event.preventDefault();
-          handleGoToPage(book.totalPages);
+          handleGoToPage(pagination.totalPages);
           break;
         case 'F11':
           event.preventDefault();
@@ -106,70 +148,21 @@ const Reader: React.FC<ReaderProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, book.totalPages, isFullscreen]);
+  }, [pagination.currentPage, pagination.totalPages, isFullscreen]);
 
-  // Handle mouse wheel navigation
-  const handleWheel = useCallback((event: WheelEvent) => {
-    if (settings.pageMode === 'pagination') {
-      event.preventDefault();
-      if (event.deltaY > 0) {
-        handleNextPage();
-      } else if (event.deltaY < 0) {
-        handlePreviousPage();
-      }
-    }
-  }, [settings.pageMode, currentPage]);
-
-  useEffect(() => {
-    const readerElement = readerRef.current;
-    if (readerElement && settings.pageMode === 'pagination') {
-      readerElement.addEventListener('wheel', handleWheel, { passive: false });
-      return () => readerElement.removeEventListener('wheel', handleWheel);
-    }
-  }, [handleWheel, settings.pageMode]);
-
-  const handleNextPage = useCallback(() => {
-    if (currentPage < book.totalPages) {
-      const newPage = currentPage + 1;
-      setCurrentPage(newPage);
-      updateProgress(newPage);
-    }
-  }, [currentPage, book.totalPages]);
-
-  const handlePreviousPage = useCallback(() => {
-    if (currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      updateProgress(newPage);
-    }
-  }, [currentPage]);
-
-  const handleGoToPage = useCallback((page: number) => {
-    if (page >= 1 && page <= book.totalPages) {
-      setCurrentPage(page);
-      updateProgress(page);
-    }
-  }, [book.totalPages]);
-
+  // 首先定义updateProgress，因为其他函数都依赖它
   const updateProgress = useCallback(async (page: number) => {
-    // Find the chapter for the current page
-    let chapterIndex = 0;
-    for (let i = 0; i < content.chapters.length; i++) {
-      if (page >= content.chapters[i].startPage && 
-          page < content.chapters[i].startPage + content.chapters[i].pageCount) {
-        chapterIndex = i;
-        break;
-      }
-    }
+    const pageInfo = pagination.getCurrentPageInfo();
+    const chapterIndex = pageInfo?.chapterIndex || 0;
+    
+    console.log(`Page ${page}: Chapter ${chapterIndex} - Dynamic pagination`);
 
     const progressUpdates = {
       currentPage: page,
       currentChapter: chapterIndex,
-      percentage: Math.round((page / book.totalPages) * 100),
+      percentage: Math.round((page / pagination.totalPages) * 100),
       position: `page-${page}`
     };
-
-    setCurrentChapter(chapterIndex);
     
     // 使用进度管理器保存进度
     try {
@@ -189,7 +182,43 @@ const Reader: React.FC<ReaderProps> = ({
         lastUpdateTime: new Date()
       });
     }
-  }, [content.chapters, book.totalPages, progress, progressManager, onProgressChange]);
+  }, [pagination, progressManager, onProgressChange, progress]);
+
+  const handleNextPage = useCallback(() => {
+    pagination.nextPage();
+    updateProgress(pagination.currentPage + 1);
+  }, [pagination, updateProgress]);
+
+  const handlePreviousPage = useCallback(() => {
+    pagination.previousPage();
+    updateProgress(pagination.currentPage - 1);
+  }, [pagination, updateProgress]);
+
+  const handleGoToPage = useCallback((page: number) => {
+    console.log(`Jumping to page ${page} of ${pagination.totalPages}`);
+    pagination.goToPage(page);
+    updateProgress(page);
+  }, [pagination, updateProgress]);
+
+  // Handle mouse wheel navigation
+  const handleWheel = useCallback((event: WheelEvent) => {
+    if (settings.pageMode === 'pagination') {
+      event.preventDefault();
+      if (event.deltaY > 0) {
+        handleNextPage();
+      } else if (event.deltaY < 0) {
+        handlePreviousPage();
+      }
+    }
+  }, [settings.pageMode, handleNextPage, handlePreviousPage]);
+
+  useEffect(() => {
+    const readerElement = readerRef.current;
+    if (readerElement && settings.pageMode === 'pagination') {
+      readerElement.addEventListener('wheel', handleWheel, { passive: false });
+      return () => readerElement.removeEventListener('wheel', handleWheel);
+    }
+  }, [handleWheel, settings.pageMode]);
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen(!isFullscreen);
@@ -201,50 +230,84 @@ const Reader: React.FC<ReaderProps> = ({
     }
   }, [isFullscreen]);
 
+  const handleToggleSettings = useCallback(() => {
+    setShowSettings(!showSettings);
+  }, [showSettings]);
+
   const getCurrentChapter = () => {
-    return content.chapters[currentChapter] || content.chapters[0];
+    const pageInfo = pagination.getCurrentPageInfo();
+    if (pageInfo && content.chapters[pageInfo.chapterIndex]) {
+      return content.chapters[pageInfo.chapterIndex];
+    }
+    return content.chapters[0];
   };
 
   const getPageContent = () => {
-    const chapter = getCurrentChapter();
-    if (!chapter) return '';
-    
-    // Calculate which part of the chapter content to show based on current page
-    const chapterStartPage = chapter.startPage;
-    const pageInChapter = currentPage - chapterStartPage;
-    
-    // For now, return the full chapter content
-    // In a real implementation, you'd split the content by pages
-    return chapter.content;
+    if (settings.pageMode === 'scroll') {
+      // 滚动模式：显示当前章节的完整内容
+      const chapter = getCurrentChapter();
+      return chapter?.content || '';
+    } else {
+      // 分页模式：使用动态分页系统获取当前页内容
+      return pagination.getPageContent(pagination.currentPage);
+    }
   };
 
   const handleToggleToc = useCallback(() => {
     setShowToc(!showToc);
   }, [showToc]);
 
+  // 处理面板大小变化
+  const handlePanelSizeChange = useCallback((leftWidth: number, rightWidth: number) => {
+    // 更新内容区域大小，触发重新分页
+    setContentAreaSize(prev => ({
+      ...prev,
+      width: rightWidth
+    }));
+  }, []);
+
+  // 处理目录显示/隐藏
+  const handleTocVisibilityChange = useCallback((visible: boolean) => {
+    setShowToc(visible);
+    // 当目录隐藏时，内容区域使用全宽；显示时需要减去目录宽度
+    if (!visible) {
+      setContentAreaSize(prev => ({
+        ...prev,
+        width: containerSize.width
+      }));
+    } else {
+      // 目录显示时，内容区域宽度需要减去默认目录宽度
+      setContentAreaSize(prev => ({
+        ...prev,
+        width: containerSize.width - 320 // 默认目录宽度
+      }));
+    }
+  }, [containerSize.width]);
+
   const handleChapterSelect = useCallback((page: number) => {
-    handleGoToPage(page);
-    setShowToc(false); // Close TOC on mobile after selection
-  }, [handleGoToPage]);
+    // 直接使用动态分页系统的页码
+    pagination.goToPage(page);
+    updateProgress(page);
+    // 不再自动关闭目录，让用户自己决定是否关闭
+  }, [pagination, updateProgress]);
 
   // 处理进度条点击跳转
   const handleProgressJump = useCallback((percentage: number) => {
-    const targetPage = Math.max(1, Math.min(book.totalPages, Math.round((percentage / 100) * book.totalPages)));
+    const targetPage = Math.max(1, Math.min(pagination.totalPages, Math.round((percentage / 100) * pagination.totalPages)));
     handleGoToPage(targetPage);
-  }, [book.totalPages, handleGoToPage]);
+  }, [pagination.totalPages, handleGoToPage]);
 
   // 重置阅读进度
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('确定要重置阅读进度吗？这将清除当前书籍的所有阅读记录。')) {
       try {
         await progressManager.resetProgress();
-        setCurrentPage(1);
-        setCurrentChapter(0);
+        pagination.goToPage(1);
       } catch (error) {
         console.error('Failed to reset progress:', error);
       }
     }
-  }, [progressManager]);
+  }, [progressManager, pagination]);
 
   // 显示进度恢复界面
   const handleShowProgressRecovery = useCallback(() => {
@@ -255,15 +318,14 @@ const Reader: React.FC<ReaderProps> = ({
   const handleRestoreProgress = useCallback(async (backupProgress: ReadingProgress) => {
     try {
       await progressManager.restoreProgress(backupProgress);
-      setCurrentPage(backupProgress.currentPage);
-      setCurrentChapter(backupProgress.currentChapter);
+      pagination.goToPage(backupProgress.currentPage);
       
       // 通知父组件进度已更新
       onProgressChange(backupProgress);
     } catch (error) {
       console.error('Failed to restore progress:', error);
     }
-  }, [progressManager, onProgressChange]);
+  }, [progressManager, pagination, onProgressChange]);
 
   // 手动备份当前进度
   const handleBackupProgress = useCallback(async () => {
@@ -279,7 +341,7 @@ const Reader: React.FC<ReaderProps> = ({
   return (
     <div 
       ref={readerRef}
-      className={`reader-container ${isFullscreen ? 'fullscreen' : ''} bg-white dark:bg-gray-900 transition-all duration-300`}
+      className={`reader-container ${isFullscreen ? 'fullscreen' : ''} ${settings.theme === 'dark' ? 'dark bg-slate-900' : 'bg-white'} transition-all duration-300`}
       style={{
         fontFamily: settings.fontFamily,
         fontSize: `${settings.fontSize}px`,
@@ -290,49 +352,67 @@ const Reader: React.FC<ReaderProps> = ({
       {!isFullscreen && (
         <ReaderToolbar
           book={book}
-          currentPage={currentPage}
-          totalPages={book.totalPages}
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
           currentChapter={getCurrentChapter()}
           isFullscreen={isFullscreen}
           onClose={onClose}
           onToggleFullscreen={toggleFullscreen}
           onGoToPage={handleGoToPage}
           onToggleToc={handleToggleToc}
+          onToggleSettings={handleToggleSettings}
         />
       )}
 
       {/* Main content area */}
       <div className="reader-main flex-1 flex relative">
-        {/* Table of Contents */}
-        <TableOfContents
-          toc={content.toc}
-          currentPage={currentPage}
-          isVisible={showToc}
-          onToggle={handleToggleToc}
-          onChapterSelect={handleChapterSelect}
+        <ResizablePanels
+          leftPanel={
+            <TableOfContents
+              toc={pagination.getDynamicToc()}
+              currentPage={pagination.currentPage}
+              isVisible={true} // 在ResizablePanels内部时总是可见
+              onToggle={() => {}} // 切换由ResizablePanels处理
+              onChapterSelect={handleChapterSelect}
+              onClose={() => handleTocVisibilityChange(false)} // 提供关闭功能
+            />
+          }
+          rightPanel={
+            pagination.isCalculating ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600 dark:text-gray-400">正在根据字体设置计算分页...</p>
+                </div>
+              </div>
+            ) : (
+              <ReaderContent
+                content={getPageContent()}
+                settings={settings}
+                isFullscreen={isFullscreen}
+                bookId={book.id}
+                onSettingsChange={onSettingsChange}
+                onAddToVocabulary={onAddToVocabulary}
+              />
+            )
+          }
+          leftPanelVisible={showToc}
+          onLeftPanelVisibilityChange={handleTocVisibilityChange}
+          onPanelSizeChange={handlePanelSizeChange}
+          minLeftWidth={250}
+          maxLeftWidth={500}
+          defaultLeftWidth={320}
         />
-
-        {/* Reader Content */}
-        <div className={`flex-1 transition-all duration-300 ${showToc ? 'lg:ml-80' : ''}`}>
-          <ReaderContent
-            content={getPageContent()}
-            settings={settings}
-            isFullscreen={isFullscreen}
-            bookId={book.id}
-            onSettingsChange={onSettingsChange}
-            onAddToVocabulary={onAddToVocabulary}
-          />
-        </div>
       </div>
 
       {/* Navigation Bar with Progress */}
       {!isFullscreen && (
         <>
           <NavigationBar
-            currentPage={currentPage}
-            totalPages={book.totalPages}
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
             currentChapter={getCurrentChapter().title}
-            progress={Math.round((currentPage / book.totalPages) * 100)}
+            progress={Math.round((pagination.currentPage / pagination.totalPages) * 100)}
             onGoToPage={handleGoToPage}
             onToggleToc={handleToggleToc}
             isFullscreen={isFullscreen}
@@ -393,8 +473,8 @@ const Reader: React.FC<ReaderProps> = ({
 
       {/* Page controls */}
       <PageControls
-        currentPage={currentPage}
-        totalPages={book.totalPages}
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
         onPreviousPage={handlePreviousPage}
         onNextPage={handleNextPage}
         onGoToPage={handleGoToPage}
@@ -406,10 +486,10 @@ const Reader: React.FC<ReaderProps> = ({
         <>
           {/* Top navigation bar for fullscreen */}
           <NavigationBar
-            currentPage={currentPage}
-            totalPages={book.totalPages}
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
             currentChapter={getCurrentChapter().title}
-            progress={Math.round((currentPage / book.totalPages) * 100)}
+            progress={Math.round((pagination.currentPage / pagination.totalPages) * 100)}
             onGoToPage={handleGoToPage}
             onToggleToc={handleToggleToc}
             isFullscreen={isFullscreen}
@@ -441,6 +521,16 @@ const Reader: React.FC<ReaderProps> = ({
             </button>
           </div>
         </>
+      )}
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <SettingsPanel
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          onClose={() => setShowSettings(false)}
+          showPreview={true}
+        />
       )}
 
       {/* Progress Recovery Modal */}

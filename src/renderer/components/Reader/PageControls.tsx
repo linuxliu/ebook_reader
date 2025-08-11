@@ -35,7 +35,7 @@ const PageControls: React.FC<PageControlsProps> = ({
 
   const controlsClasses = `
     page-controls
-    fixed bottom-6 left-1/2 transform -translate-x-1/2
+    fixed bottom-4 left-1/2 transform -translate-x-1/2
     ${isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}
     transition-opacity duration-300
     z-40

@@ -11,6 +11,7 @@ interface ReaderToolbarProps {
   onToggleFullscreen: () => void;
   onGoToPage: (page: number) => void;
   onToggleToc?: () => void;
+  onToggleSettings?: () => void;
 }
 
 const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
@@ -22,7 +23,8 @@ const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
   onClose,
   onToggleFullscreen,
   onGoToPage,
-  onToggleToc
+  onToggleToc,
+  onToggleSettings
 }) => {
   const [showPageInput, setShowPageInput] = useState(false);
   const [pageInputValue, setPageInputValue] = useState(currentPage.toString());
@@ -152,6 +154,7 @@ const ReaderToolbar: React.FC<ReaderToolbarProps> = ({
         </button>
 
         <button
+          onClick={onToggleSettings}
           className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           title="设置"
         >

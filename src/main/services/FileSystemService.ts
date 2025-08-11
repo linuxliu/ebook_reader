@@ -42,7 +42,7 @@ export class FileSystemService implements IFileSystemService {
   private readonly txtParser: TxtParser;
   private readonly mobiParser: MobiParser;
 
-  constructor(cacheDir?: string) {
+  constructor(cacheDir?: string, private databaseService?: any) {
     this.cacheDir = cacheDir || path.join(process.cwd(), 'cache');
     this.epubParser = new EpubParser();
     this.pdfParser = new PdfParser();
@@ -144,8 +144,6 @@ export class FileSystemService implements IFileSystemService {
   async parseBookContent(bookId: string): Promise<BookContent> {
     try {
       // 首先需要找到书籍文件路径
-      // 这里假设我们有一个方法来获取书籍的文件路径
-      // 在实际实现中，这个信息应该从数据库中获取
       const bookMetadata = await this.getBookMetadataById(bookId);
       if (!bookMetadata) {
         throw this.createError(
@@ -157,19 +155,25 @@ export class FileSystemService implements IFileSystemService {
       const filePath = bookMetadata.filePath;
       const format = bookMetadata.format;
 
+      let content: BookContent;
+
       // 根据格式选择相应的解析器
       switch (format) {
         case 'epub':
-          return await this.epubParser.parseContent(filePath, bookId);
+          content = await this.epubParser.parseContent(filePath, bookId);
+          break;
         
         case 'pdf':
-          return await this.pdfParser.parseContent(filePath, bookId);
+          content = await this.pdfParser.parseContent(filePath, bookId);
+          break;
         
         case 'mobi':
-          return await this.mobiParser.parseContent(filePath, bookId);
+          content = await this.mobiParser.parseContent(filePath, bookId);
+          break;
         
         case 'txt':
-          return await this.txtParser.parseContent(filePath, bookId);
+          content = await this.txtParser.parseContent(filePath, bookId);
+          break;
         
         default:
           throw this.createError(
@@ -177,6 +181,19 @@ export class FileSystemService implements IFileSystemService {
             `不支持的文件格式: ${format}`
           );
       }
+
+      // 计算真实的总页数并更新数据库
+      const totalPages = this.calculateTotalPages(content.chapters);
+      if (totalPages !== bookMetadata.totalPages && this.databaseService) {
+        try {
+          await this.databaseService.updateBook(bookId, { totalPages });
+          console.log(`Updated book ${bookId} total pages: ${bookMetadata.totalPages} -> ${totalPages}`);
+        } catch (error) {
+          console.warn('Failed to update book total pages:', error);
+        }
+      }
+
+      return content;
     } catch (error) {
       // 如果是我们自定义的错误，直接抛出
       if (error && typeof error === 'object' && 'type' in error) {
@@ -187,6 +204,18 @@ export class FileSystemService implements IFileSystemService {
         `解析书籍内容失败: ${error instanceof Error ? error.message : '未知错误'}`
       );
     }
+  }
+
+  /**
+   * 计算书籍的真实总页数
+   */
+  private calculateTotalPages(chapters: any[]): number {
+    if (!chapters || chapters.length === 0) {
+      return 1;
+    }
+    
+    const lastChapter = chapters[chapters.length - 1];
+    return lastChapter.startPage + lastChapter.pageCount - 1;
   }
 
   /**
@@ -493,12 +522,17 @@ export class FileSystemService implements IFileSystemService {
   }
 
   /**
-   * 根据书籍 ID 获取书籍元信息（临时实现）
-   * 在实际应用中，这应该通过 DatabaseService 来实现
+   * 根据书籍 ID 获取书籍元信息
    */
   private async getBookMetadataById(bookId: string): Promise<BookMetadata | null> {
-    // 这是一个临时实现，实际应该从数据库获取
-    // 目前返回 null，表示找不到书籍
+    if (this.databaseService) {
+      try {
+        return await this.databaseService.getBook(bookId);
+      } catch (error) {
+        console.error('Failed to get book metadata from database:', error);
+        return null;
+      }
+    }
     return null;
   }
 

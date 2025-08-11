@@ -38,7 +38,7 @@ export class IPCHandlers {
 
   constructor(databaseService?: DatabaseService, cacheService?: CacheService) {
     this.databaseService = databaseService || new DatabaseService();
-    this.fileSystemService = new FileSystemService();
+    this.fileSystemService = new FileSystemService(undefined, this.databaseService);
     this.cacheService = cacheService || new CacheService();
     this.translationService = new TranslationServiceImpl();
   }

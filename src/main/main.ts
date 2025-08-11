@@ -42,17 +42,17 @@ class ElectronApp {
 
     // Handle window closed events
     app.on('window-all-closed', async () => {
-      // 清理 IPC 处理器
-      if (this.ipcHandlers) {
-        await this.ipcHandlers.cleanup();
-      }
-      if (this.startupOptimizer) {
-        await this.startupOptimizer.cleanup();
-      }
-      
       if (process.platform !== 'darwin') {
+        // 只有在非 macOS 平台才清理资源并退出
+        if (this.ipcHandlers) {
+          await this.ipcHandlers.cleanup();
+        }
+        if (this.startupOptimizer) {
+          await this.startupOptimizer.cleanup();
+        }
         app.quit();
       }
+      // 在 macOS 上，应用保持运行，不清理资源
     });
 
     // Handle app quit
@@ -85,8 +85,9 @@ class ElectronApp {
         allowRunningInsecureContent: false,
         experimentalFeatures: false,
       },
-      titleBarStyle: 'default',
       show: false,
+      backgroundColor: '#ffffff',
+      title: '电子书阅读器', // 设置窗口标题
     });
 
     // Set up auto-updater

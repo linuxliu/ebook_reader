@@ -10,6 +10,36 @@
   
   body {
     @apply antialiased;
+    /* 改善字体渲染 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  /* 深色主题下的字体渲染优化 */
+  .dark body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  /* 深色主题下的文本优化 */
+  .dark .reader-text {
+    color: #f8fafc;
+    text-shadow: 0 0 1px rgba(248, 250, 252, 0.1);
+    font-weight: 400;
+  }
+  
+  /* 深色主题下的标题优化 */
+  .dark .reader-text h1,
+  .dark .reader-text h2,
+  .dark .reader-text h3,
+  .dark .reader-text h4,
+  .dark .reader-text h5,
+  .dark .reader-text h6 {
+    color: #ffffff;
+    font-weight: 600;
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.1);
   }
 }
 
@@ -40,6 +70,34 @@
   --color-reader-selection: #bae6fd;
   --color-reader-selection-text: #0c4a6e;
   --color-reader-highlight: #fef3c7;
+}
+
+/* Dark theme variables */
+.dark {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-tertiary: #334155;
+  --color-bg-elevated: #1e293b;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+  --color-text-inverse: #0f172a;
+  --color-border-primary: #334155;
+  --color-border-secondary: #475569;
+  --color-border-focus: #0ea5e9;
+  --color-interactive-primary: #0ea5e9;
+  --color-interactive-primary-hover: #0284c7;
+  --color-interactive-secondary: #334155;
+  --color-interactive-secondary-hover: #475569;
+  --color-interactive-danger: #ef4444;
+  --color-interactive-danger-hover: #dc2626;
+  --color-interactive-success: #10b981;
+  --color-interactive-success-hover: #059669;
+  --color-reader-bg: #0f172a;
+  --color-reader-text: #f8fafc;
+  --color-reader-selection: #1e40af;
+  --color-reader-selection-text: #bfdbfe;
+  --color-reader-highlight: #fbbf24;
 }
 
 /* Custom component styles using CSS variables */

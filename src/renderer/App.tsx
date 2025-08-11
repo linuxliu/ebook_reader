@@ -73,57 +73,59 @@ const App: React.FC = () => {
       setCurrentBook(book);
       setCurrentView('reader');
 
-      // Mock data for now - in real implementation, load from IPC
-      const mockContent: BookContent = {
-        bookId: book.id,
-        chapters: [
-          {
-            id: 'chapter-1',
-            title: '第一章',
-            content: '<p>这是第一章的内容。在这里我们开始了一个精彩的故事...</p><p>故事继续发展，主人公遇到了各种挑战和机遇。</p>',
-            pageCount: Math.floor(book.totalPages / 2),
-            startPage: 1
-          },
-          {
-            id: 'chapter-2',
-            title: '第二章',
-            content: '<p>第二章带来了新的转折。情节变得更加复杂和有趣...</p><p>随着故事的深入，我们看到了更多的细节和发展。</p>',
-            pageCount: Math.ceil(book.totalPages / 2),
-            startPage: Math.floor(book.totalPages / 2) + 1
-          }
-        ],
-        toc: [
-          { id: 'toc-1', title: '第一章', level: 1, page: 1 },
-          { id: 'toc-2', title: '第二章', level: 1, page: Math.floor(book.totalPages / 2) + 1 }
-        ],
-        rawContent: '原始内容...'
-      };
+      // Load real book content from IPC
+      const { IPCClient } = await import('./services/IPCClient');
+      const ipcClient = new IPCClient();
+      
+      // 解析书籍内容
+      console.log('Loading book content for:', book.title);
+      const content = await ipcClient.parseBookContent(book.id);
+      console.log('Book content loaded:', content);
+      
+      // 加载阅读进度
+      let progress = await ipcClient.getProgress(book.id);
+      if (!progress) {
+        // 创建初始进度
+        progress = {
+          bookId: book.id,
+          currentPage: 1,
+          currentChapter: 0,
+          percentage: 0,
+          position: 'page-1',
+          lastUpdateTime: new Date()
+        };
+      }
+      
+      // 加载阅读设置
+      console.log('Attempting to load settings for book:', book.id);
+      let settings = await ipcClient.getSettings(book.id);
+      console.log('Loaded settings from database:', settings);
+      if (!settings) {
+        // 创建默认设置
+        console.log('No settings found, creating default settings');
+        settings = {
+          bookId: book.id,
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          fontSize: 16,
+          lineHeight: 1.6,
+          margin: 40,
+          theme: 'light',
+          pageMode: 'pagination'
+        };
+      }
+      console.log('Final settings to be used:', settings);
 
-      const mockProgress: ReadingProgress = {
-        bookId: book.id,
-        currentPage: 1,
-        currentChapter: 0,
-        percentage: 1,
-        position: 'page-1',
-        lastUpdateTime: new Date()
-      };
-
-      const mockSettings: ReadingSettings = {
-        bookId: book.id,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontSize: 16,
-        lineHeight: 1.6,
-        margin: 40,
-        theme: 'light',
-        pageMode: 'pagination'
-      };
-
-      setBookContent(mockContent);
-      setReadingProgress(mockProgress);
-      setReadingSettings(mockSettings);
+      setBookContent(content);
+      setReadingProgress(progress);
+      setReadingSettings(settings);
 
     } catch (error) {
       console.error('Failed to load book:', error);
+      // 如果加载失败，显示错误信息
+      alert(`加载书籍失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      // 回到书架
+      setCurrentView('bookshelf');
+      setCurrentBook(null);
     }
   };
 
@@ -160,16 +162,36 @@ const App: React.FC = () => {
     setReadingSettings(null);
   };
 
-  const handleProgressChange = (progress: ReadingProgress) => {
+  const handleProgressChange = async (progress: ReadingProgress) => {
     setReadingProgress(progress);
-    // TODO: Save progress to database via IPC
-    console.log('Progress updated:', progress);
+    
+    // 保存进度到数据库
+    try {
+      const { IPCClient } = await import('./services/IPCClient');
+      const ipcClient = new IPCClient();
+      await ipcClient.saveProgress(progress.bookId, progress);
+      console.log('Progress saved successfully:', progress);
+    } catch (error) {
+      console.error('Failed to save progress:', error);
+      // 可以选择显示错误提示给用户
+    }
   };
 
-  const handleSettingsChange = (settings: ReadingSettings) => {
+  const handleSettingsChange = async (settings: ReadingSettings) => {
+    console.log('handleSettingsChange called with:', settings);
     setReadingSettings(settings);
-    // TODO: Save settings to database via IPC
-    console.log('Settings updated:', settings);
+    
+    // 保存设置到数据库
+    try {
+      const { IPCClient } = await import('./services/IPCClient');
+      const ipcClient = new IPCClient();
+      console.log('Attempting to save settings to database...');
+      await ipcClient.saveSettings(settings.bookId, settings);
+      console.log('Settings saved successfully to database:', settings);
+    } catch (error) {
+      console.error('Failed to save settings to database:', error);
+      // 可以选择显示错误提示给用户
+    }
   };
 
   return (
@@ -182,16 +204,16 @@ const App: React.FC = () => {
                 <header className="text-center mb-8">
                   <div className="flex justify-between items-center mb-4">
                     <div className="flex-1"></div>
-                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+                    {/* <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
                       电子书阅读器
-                    </h1>
+                    </h1> */}
                     <div className="flex-1 flex justify-end">
                       <ThemeToggle />
                     </div>
                   </div>
-                  <p className="text-gray-600 dark:text-gray-300">
+                  {/* <p className="text-gray-600 dark:text-gray-300">
                     基于 Electron + React + TypeScript 构建
-                  </p>
+                  </p> */}
                 </header>
 
                 {/* Error Display */}
@@ -316,7 +338,11 @@ const App: React.FC = () => {
                           theme: 'light',
                           pageMode: 'pagination'
                         }}
-                        onSettingsChange={() => { }}
+                        onSettingsChange={(settings: ReadingSettings) => {
+                          // 全局设置页面暂时不保存设置，只用于预览
+                          // 真正的设置保存在阅读器内部进行
+                          console.log('Global settings changed (preview only):', settings);
+                        }}
                         onClose={() => setCurrentView('bookshelf')}
                       />
                     )}

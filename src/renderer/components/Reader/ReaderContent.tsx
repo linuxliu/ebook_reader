@@ -83,7 +83,10 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
       element.style.fontFamily = settings.fontFamily;
       element.style.fontSize = `${settings.fontSize}px`;
       element.style.lineHeight = settings.lineHeight.toString();
-      element.style.padding = `${settings.margin}px`;
+      element.style.paddingLeft = `${settings.margin}px`;
+      element.style.paddingRight = `${settings.margin}px`;
+      element.style.paddingTop = '0px';
+      element.style.paddingBottom = '0px';
       
       // Register the content element for text selection
       registerContainer(element);
@@ -93,10 +96,9 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
   const contentClasses = `
     reader-content
     flex-1
-    overflow-auto
-    ${settings.pageMode === 'scroll' ? 'overflow-y-auto' : 'overflow-hidden'}
-    ${settings.theme === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900'}
-    ${isFullscreen ? 'p-8' : 'p-6'}
+    ${settings.pageMode === 'scroll' ? 'overflow-y-auto' : 'overflow-hidden h-full'}
+    ${settings.theme === 'dark' ? 'bg-slate-900 text-slate-50' : 'bg-white text-gray-900'}
+    ${isFullscreen ? 'p-8 pb-20' : 'p-6 pb-20'}
     transition-all duration-300
     selection:bg-blue-200 dark:selection:bg-blue-800
     selection:text-blue-900 dark:selection:text-blue-100
@@ -106,17 +108,35 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
     <div className={contentClasses}>
       <div
         ref={contentRef}
-        className="reader-text max-w-4xl mx-auto leading-relaxed cursor-text"
+        className={`reader-text leading-relaxed cursor-text ${
+          settings.pageMode === 'pagination' ? 'h-full overflow-hidden' : ''
+        }`}
         style={{
           fontFamily: settings.fontFamily,
           fontSize: `${settings.fontSize}px`,
           lineHeight: settings.lineHeight,
-          margin: `0 ${settings.margin}px`,
           textAlign: 'justify',
           wordBreak: 'break-word',
           hyphens: 'auto',
           userSelect: 'text',
           WebkitUserSelect: 'text',
+          // 改善字体渲染质量
+          fontSmooth: 'always',
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
+          textRendering: 'optimizeLegibility',
+          // 深色主题下的特殊处理
+          ...(settings.theme === 'dark' && {
+            color: '#f8fafc', // 更亮的白色
+            textShadow: '0 0 1px rgba(255, 255, 255, 0.1)', // 轻微的文字阴影增强可读性
+          }),
+          ...(settings.pageMode === 'pagination' && {
+            columnWidth: 'auto',
+            columnCount: 1,
+            columnGap: '0',
+            height: '100%',
+            overflow: 'hidden'
+          })
         }}
         dangerouslySetInnerHTML={{ __html: content }}
       />
