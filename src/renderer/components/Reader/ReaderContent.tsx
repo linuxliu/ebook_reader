@@ -96,7 +96,8 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
   const contentClasses = `
     reader-content
     flex-1
-    ${settings.pageMode === 'scroll' ? 'overflow-y-auto' : 'overflow-hidden h-full'}
+    ${settings.pageMode === 'scroll' ? 'overflow-y-auto' : 'overflow-hidden'}
+    ${settings.pageMode === 'pagination' ? 'h-full max-h-full' : ''}
     ${settings.theme === 'dark' ? 'bg-slate-900 text-slate-50' : 'bg-white text-gray-900'}
     ${isFullscreen ? 'p-8 pb-20' : 'p-6 pb-20'}
     transition-all duration-300
@@ -109,7 +110,7 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
       <div
         ref={contentRef}
         className={`reader-text leading-relaxed cursor-text ${
-          settings.pageMode === 'pagination' ? 'h-full overflow-hidden' : ''
+          settings.pageMode === 'pagination' ? 'h-full overflow-hidden pagination-content' : 'scroll-content'
         }`}
         style={{
           fontFamily: settings.fontFamily,
@@ -135,7 +136,10 @@ const ReaderContent: React.FC<ReaderContentProps> = ({
             columnCount: 1,
             columnGap: '0',
             height: '100%',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            // 额外的溢出保护
+            maxHeight: '100%',
+            boxSizing: 'border-box'
           })
         }}
         dangerouslySetInnerHTML={{ __html: content }}

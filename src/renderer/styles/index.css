@@ -218,6 +218,24 @@
     @apply max-w-none leading-relaxed transition-colors duration-300;
   }
   
+  /* 分页模式下的内容样式 */
+  .pagination-content {
+    @apply h-full;
+    overflow: hidden !important;
+    max-height: 100% !important;
+    box-sizing: border-box;
+    /* 防止内容溢出的额外保护 */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  
+  /* 滚动模式下的内容样式 */
+  .scroll-content {
+    @apply overflow-y-auto;
+    max-height: none;
+  }
+  
   .reader-text p {
     @apply mb-4 text-justify;
   }

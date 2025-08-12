@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useCurrentView, useBooks, useAppSettings, useLoading, useError } from './store';
 import {
   LazyBookshelf,
@@ -37,36 +37,7 @@ const App: React.FC = () => {
   // Use memory monitoring
   const { memoryStats, triggerCleanup } = useMemoryMonitor();
 
-  useEffect(() => {
-    // Initialize app
-    const initializeApp = async () => {
-      try {
-        // Test the IPC communication
-        const appVersion = await window.electronAPI.getVersion();
-        const appPlatform = await window.electronAPI.getPlatform();
-        console.log('App initialized:', { version: appVersion, platform: appPlatform });
-        
-        // Load books from database
-        const { IPCClient } = await import('./services/IPCClient');
-        const ipcClient = new IPCClient();
-        const allBooks = await ipcClient.getAllBooks();
-        console.log('Loaded books:', allBooks);
-        
-        // Update books state
-        setBooks(allBooks);
-      } catch (error) {
-        console.error('Failed to initialize app:', error);
-      }
-    };
-
-    initializeApp();
-  }, [setBooks]);
-
-  const handleViewChange = (view: typeof currentView) => {
-    setCurrentView(view);
-  };
-
-  const handleBookSelect = async (book: BookMetadata) => {
+  const handleBookSelect = useCallback(async (book: BookMetadata) => {
     console.log('Selected book:', book);
     try {
       // Load book content and progress
@@ -76,16 +47,26 @@ const App: React.FC = () => {
       // Load real book content from IPC
       const { IPCClient } = await import('./services/IPCClient');
       const ipcClient = new IPCClient();
-      
+
       // 解析书籍内容
       console.log('Loading book content for:', book.title);
       const content = await ipcClient.parseBookContent(book.id);
       console.log('Book content loaded:', content);
-      
+
       // 加载阅读进度
-      let progress = await ipcClient.getProgress(book.id);
+      console.log('Attempting to load progress for book:', book.id);
+      let progress;
+      try {
+        progress = await ipcClient.getProgress(book.id);
+        console.log('Loaded progress from database:', progress);
+      } catch (progressError) {
+        console.warn('Failed to load progress, will create default:', progressError);
+        progress = null;
+      }
+
       if (!progress) {
         // 创建初始进度
+        console.log('Creating default progress for book:', book.id);
         progress = {
           bookId: book.id,
           currentPage: 1,
@@ -95,14 +76,21 @@ const App: React.FC = () => {
           lastUpdateTime: new Date()
         };
       }
-      
+
       // 加载阅读设置
       console.log('Attempting to load settings for book:', book.id);
-      let settings = await ipcClient.getSettings(book.id);
-      console.log('Loaded settings from database:', settings);
+      let settings;
+      try {
+        settings = await ipcClient.getSettings(book.id);
+        console.log('Loaded settings from database:', settings);
+      } catch (settingsError) {
+        console.warn('Failed to load settings, will create default:', settingsError);
+        settings = null;
+      }
+
       if (!settings) {
         // 创建默认设置
-        console.log('No settings found, creating default settings');
+        console.log('Creating default settings for book:', book.id);
         settings = {
           bookId: book.id,
           fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -127,6 +115,80 @@ const App: React.FC = () => {
       setCurrentView('bookshelf');
       setCurrentBook(null);
     }
+  }, [setCurrentView, setCurrentBook, setBookContent, setReadingProgress, setReadingSettings]);
+
+  useEffect(() => {
+    // Initialize app
+    const initializeApp = async () => {
+      try {
+        // Test the IPC communication
+        const appVersion = await window.electronAPI.getVersion();
+        const appPlatform = await window.electronAPI.getPlatform();
+        console.log('App initialized:', { version: appVersion, platform: appPlatform });
+
+        // Load books from database
+        const { IPCClient } = await import('./services/IPCClient');
+        const ipcClient = new IPCClient();
+        const allBooks = await ipcClient.getAllBooks();
+        console.log('Loaded books:', allBooks);
+
+        // Update books state
+        setBooks(allBooks);
+
+        // Check if we should auto-load the last read book
+        if (currentView === 'reader' && !currentBook && allBooks.length > 0) {
+          console.log('Auto-loading last read book...');
+
+          // Try to get the last opened book from localStorage
+          const persistedState = localStorage.getItem('ebook-reader-app-state');
+          let lastBookId: string | null = null;
+
+          if (persistedState) {
+            try {
+              const parsed = JSON.parse(persistedState);
+              lastBookId = parsed.lastOpenBook;
+            } catch (error) {
+              console.warn('Failed to parse persisted state:', error);
+            }
+          }
+
+          // Find the last read book
+          let bookToLoad: BookMetadata | null = null;
+
+          if (lastBookId) {
+            bookToLoad = allBooks.find(book => book.id === lastBookId) || null;
+          }
+
+          // If no specific book found, use the most recently read book
+          if (!bookToLoad && allBooks.length > 0) {
+            bookToLoad = allBooks
+              .filter(book => book.lastReadDate)
+              .sort((a, b) => new Date(b.lastReadDate!).getTime() - new Date(a.lastReadDate!).getTime())[0] || allBooks[0];
+          }
+
+          if (bookToLoad) {
+            console.log('Auto-loading book:', bookToLoad.title);
+            await handleBookSelect(bookToLoad);
+          } else {
+            // No books available, go to bookshelf
+            console.log('No books available, redirecting to bookshelf');
+            setCurrentView('bookshelf');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize app:', error);
+        // On error, ensure we're on bookshelf view
+        if (currentView === 'reader' && !currentBook) {
+          setCurrentView('bookshelf');
+        }
+      }
+    };
+
+    initializeApp();
+  }, [setBooks, currentView, currentBook, handleBookSelect, setCurrentView]);
+
+  const handleViewChange = (view: typeof currentView) => {
+    setCurrentView(view);
   };
 
   const handleBookAdd = (book: BookMetadata) => {
@@ -143,11 +205,11 @@ const App: React.FC = () => {
       const { IPCClient } = await import('./services/IPCClient');
       const ipcClient = new IPCClient();
       await ipcClient.deleteBook(bookId);
-      
+
       // 从本地状态中移除书籍
       const updatedBooks = books.filter(book => book.id !== bookId);
       setBooks(updatedBooks);
-      
+
       console.log('Book deleted successfully:', bookId);
     } catch (error) {
       console.error('Failed to delete book:', error);
@@ -164,7 +226,7 @@ const App: React.FC = () => {
 
   const handleProgressChange = async (progress: ReadingProgress) => {
     setReadingProgress(progress);
-    
+
     // 保存进度到数据库
     try {
       const { IPCClient } = await import('./services/IPCClient');
@@ -180,7 +242,7 @@ const App: React.FC = () => {
   const handleSettingsChange = async (settings: ReadingSettings) => {
     console.log('handleSettingsChange called with:', settings);
     setReadingSettings(settings);
-    
+
     // 保存设置到数据库
     try {
       const { IPCClient } = await import('./services/IPCClient');
